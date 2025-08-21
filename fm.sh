@@ -135,18 +135,26 @@ file_type_detailed() {
 # Convert file size to easy-to-read format
 format_size() {
     local bytes="$1"
+
+    [[ "$bytes" =~ ^[0-9]+$ ]] || { echo "0B"; return; } 
+
+
     if command -v numfmt >/dev/null 2>&1; then
-        numfmt --to=iec --suffix=B --padding=8 "$bytes" 2>/dev/null || echo "${bytes}B"
+        numfmt --to=iec --suffix=B --padding=8 "$bytes" 2>/dev/null && return 
+    fi
+
+    local -r KB=1024
+    local -r MB=$((KB * 1024))      # 1,048,576
+    local -r GB=$((MB * 1024))      # 1,073,741,824
+
+    if (( bytes >= GB )); then
+        printf "%.1fGB" "$((bytes * 10 / GB))e-1"
+    elif (( bytes >= MB )); then
+        printf "%.1fMB" "$((bytes * 10 / MB))e-1"
+    elif (( bytes >= KB )); then
+        printf "%.1fKB" "$((bytes * 10 / KB))e-1"
     else
-        if (( bytes >= 1073741824 )); then
-            printf "%.1fGB" "$((bytes * 10 / 1073741824))e-1"
-        elif (( bytes >= 1048576 )); then
-            printf "%.1fMB" "$((bytes * 10 / 1048576))e-1"
-        elif (( bytes >= 1024 )); then
-            printf "%.1fKB" "$((bytes * 10 / 1024))e-1"
-        else
-            printf "%dB" "$bytes"
-        fi
+        printf "%dB" "$bytes"
     fi
 }
 
