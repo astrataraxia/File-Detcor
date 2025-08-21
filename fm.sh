@@ -57,7 +57,7 @@ file_type_detailed() {
     fi
 }
 
-# 파일 크기를 읽기 쉬운 형식으로 변환
+# Convert file size to easy-to-read format
 format_size() {
     local bytes="$1"
     if command -v numfmt >/dev/null 2>&1; then
@@ -75,51 +75,51 @@ format_size() {
     fi
 }
 
-# 줄 번호와 함께 파일 내용 출력 (주석 강조)
+# Print file contents with line numbers (highlight comments)
 print_file_with_lines() {
     local file="$1"
     local line_num=1
 
-    echo -e "${CYAN}📄 파일 내용 보기 : ${WHITE}$file${RESET}"
+    echo -e "${CYAN}📄 File contents view: ${WHITE}$file${RESET}"
     echo "================================================================================"
 
     if [[ ! -r "$file" ]]; then
-        echo -e "${RED}❌ 파일을 읽을 수 없습니다: $file${RESET}"
+        echo -e "${RED}❌ Cannot read file: $file${RESET}"
         return 1
     fi
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" =~ ^[[:space:]]*# ]]; then
-            # 주석 라인은 초록색으로 출력
+            # Comment lines are printed in green
             printf "${YELLOW}%02d${RESET} ${GREEN}%s${RESET}\n" "$line_num" "$line"
         elif [[ "$line" =~ ^[[:space:]]*$ ]]; then
-            # 빈 라인
+            # Blank lines are printed without content
             printf "${YELLOW}%02d${RESET} \n" "$line_num"
         else
-            # 일반 라인은 기본 색상으로 출력
+            # Regular lines are printed in default color
             printf "${YELLOW}%02d${RESET} %s\n" "$line_num" "$line"
         fi
         ((line_num++))
     done < "$file"
 }
 
-# 파일 목록 출력
+# Print file list
 list_files() {
     local dir="${1:-.}"
     FILES=()
     FILETYPES=()
 
-    echo -e "${BLUE}📁 현재 디렉토리: ${WHITE}$(realpath "$dir")${RESET}"
+    echo -e "${BLUE}📁 Current directory: ${WHITE}$(realpath "$dir")${RESET}"
     echo "=============================================="
 
-    # 헤더 출력
+    # Header output
     printf "${WHITE}%-4s %-25s %-12s %-9s %-9s %-9s %-12s${RESET}\n" \
-           "번호" "파일명" "수정일" "크기" "소유자" "그룹" "권한"
+           "No" "Filename" "Modified" "Size" "Owner" "Group" "Permissions"
     echo "================================================================================"
 
     local count=1
 
-    # 현재 디렉토리가 루트가 아니면 상위 디렉토리 항목 추가
+    # If the current directory is not root, add the parent directory entry
     if [[ "$dir" != "/" ]]; then
         FILES+=("..")
         FILETYPES+=("parent")
@@ -128,14 +128,14 @@ list_files() {
         ((count++))
     fi
 
-    # 파일과 디렉토리 처리
+    # Process files and directories
     for file in "$dir"/*; do
         [[ ! -e "$file" ]] && continue
 
         local basename_file=$(basename "$file")
         FILES+=("$file")
 
-        # 파일 정보 수집
+        # Collect file information
         local mod_time=$(date -r "$file" +"%Y-%m-%d" 2>/dev/null || echo "unknown")
         local file_size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "0")
         local size=$(format_size "$file_size")
@@ -146,7 +146,7 @@ list_files() {
 
         FILETYPES+=("$ftype")
 
-        # 파일 타입별 색상 및 아이콘
+        # File type-specific colors and icons
         local color=""
         local icon=""
         case "$ftype" in
@@ -167,27 +167,27 @@ list_files() {
     done
 
     echo "=============================================="
-    echo -e "${GREEN}✅ 완료${RESET}"
+    echo -e "${GREEN}✅ Completed${RESET}"
 }
 
-# 파일 작업 메뉴
+# File operations menu
 file_menu() {
     local file="$1"
     local ftype="$2"
 
     echo ""
     echo "=============================================="
-    echo -e "${YELLOW}📁 파일 작업 메뉴: ${WHITE}$(basename "$file")${RESET}"
+    echo -e "${YELLOW}📁 File operations menu: ${WHITE}$(basename "$file")${RESET}"
     echo "=============================================="
-    echo "[1] 파일 내용으로 들어가기"
-    echo "[2] 파일 수정"
-    echo "[3] 파일 삭제"
-    echo "[c] 취소"
-    echo "[0] 프로그램 종료"
+    echo "[1] Enter file contents"
+    echo "[2] Edit file"
+    echo "[3] Delete file"
+    echo "[c] Cancel"
+    echo "[0] Exit program"
     echo "=============================================="
 
     while true; do
-        echo -ne "${CYAN}메뉴 선택 >>> ${RESET}"
+        echo -ne "${CYAN}Select menu >>> ${RESET}"
         read -r choice
 
         case "$choice" in
@@ -205,74 +205,74 @@ file_menu() {
                 elif [[ -f "$file" ]]; then
                     print_file_with_lines "$file"
                     echo ""
-                    echo -e "${GREEN}파일을 확인했습니다. 엔터를 눌러 계속...${RESET}"
+                    echo -e "${GREEN}File has been checked. Press Enter to continue...${RESET}"
                     read -r
                     return 0
                 else
-                    echo -e "${RED}❌ 읽을 수 없는 파일입니다.${RESET}"
+                    echo -e "${RED}❌ Cannot read file: $file${RESET}"
                 fi
                 ;;
             2)
                 if [[ -f "$file" && -w "$file" ]]; then
-                    echo -e "${YELLOW}vi로 파일을 편집합니다...${RESET}"
+                    echo -e "${YELLOW}Editing file with vi...${RESET}"
                     vi "$file"
                     return 0
                 else
-                    echo -e "${RED}❌ 편집할 수 없는 파일입니다.${RESET}"
+                    echo -e "${RED}❌ Cannot edit file: $file${RESET}"
                 fi
                 ;;
             3)
-                echo -ne "${RED}정말로 '$file' 파일을 삭제하시겠습니까? (y/N) ${RESET}"
+                echo -ne "${RED}Are you sure you want to delete the file '$file'? (y/n) ${RESET}"
                 read -r confirm
                 if [[ "$confirm" =~ ^[Yy]$ ]]; then
                     if rm -rf "$file" 2>/dev/null; then
-                        echo -e "${GREEN}✅ 파일이 삭제되었습니다.${RESET}"
+                        echo -e "${GREEN}✅ File has been deleted.${RESET}"
                     else
-                        echo -e "${RED}❌ 파일 삭제에 실패했습니다.${RESET}"
+                        echo -e "${RED}❌ Failed to delete file: $file${RESET}"
                     fi
                     sleep 2
                     return 0
                 else
-                    echo -e "${YELLOW}삭제가 취소되었습니다.${RESET}"
+                    echo -e "${YELLOW}Cancellation has been made.${RESET}"
                 fi
                 ;;
             c|C)
-                echo -e "${YELLOW}파일 목록으로 돌아갑니다.${RESET}"
+                echo -e "${YELLOW}Returning to file list.${RESET}"
                 return 0
                 ;;
             0)
-                echo -e "${YELLOW}🔸 프로그램을 종료합니다.${RESET}"
+                echo -e "${YELLOW}🔸 Exiting program.${RESET}"
                 exit 0
                 ;;
             *)
-                echo -e "${RED}❌ 잘못된 선택입니다. 다시 선택해주세요.${RESET}"
+                echo -e "${RED}❌ Invalid selection, please try again.${RESET}"
                 ;;
         esac
     done
 }
 
-# 메인 루프
+# Main loop
 main() {
     while true; do
         clear
         list_files "$CURRENT_DIR"
 
         echo ""
-        echo "[>>] 원하는 파일 번호를 입력하세요"
-        echo "[c] 취소 (현재 화면 새로고침)"
-        echo "[0] 종료"
+        echo "[>>] Please enter the desired file number"
+        echo "[c] Cancel (Current Screen Refresh)"
+        echo "[0] Exit"
         echo "================================================================================"
 
         while true; do
-            echo -ne "${CYAN}번호 입력 >>> ${RESET}"
+            echo -ne "${CYAN}Enter Number >>> ${RESET}"
             read -r selection
 
             if [[ "$selection" == "0" ]]; then
-                echo -e "${YELLOW}🔸 프로그램을 종료합니다.${RESET}"
+                echo -e "${YELLOW}🔸 Shut down the program.${RESET}"
                 echo -e "${RESET}"
                 exit 0
             elif [[ "$selection" == "c" || "$selection" == "C" ]]; then
-                echo -e "${YELLOW}화면을 새로고침합니다.${RESET}"
+                echo -e "${YELLOW}Refresh the screen.${RESET}"
                 break
             elif [[ "$selection" =~ ^[0-9]+$ ]] && (( selection > 0 && selection <= ${#FILES[@]} )); then
                 local selected_file="${FILES[$((selection-1))]}"
@@ -280,15 +280,15 @@ main() {
                 file_menu "$selected_file" "$selected_type"
                 break
             else
-                echo -e "${RED}❌ 잘못된 번호입니다. 다시 입력해주세요. (1-${#FILES[@]}, c, 0 중 선택)${RESET}"
+                echo -e "${RED}❌ Invalid number, please re-enter. (Choose from 1-${#FILES[@]}, c, 0)${RESET}"
             fi
         done
     done
 }
 
-# 프로그램 시작
+# Program start message
 echo -e "${BLUE}================================================${RESET}"
-echo -e "${WHITE}    🔍 File Viewer & Manager 시작${RESET}"
+echo -e "${WHITE}    🔍 File Viewer & Manager Open${RESET}"
 echo -e "${BLUE}================================================${RESET}"
 
 main
