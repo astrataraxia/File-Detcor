@@ -21,40 +21,115 @@ CURRENT_DIR="$(pwd)"
 file_type_detailed() {
     local file="$1"
 
-    # directory check
+    # check if file exists
+    if [[ ! -e "$file" ]]; then
+        echo "notfound"
+        return 1
+    fi
+
+    # check if file is a symbolic link
+    if [[ -L "$file" ]]; then
+        echo "link"
+        return 0
+    fi
+
+    # check if file is a directory
     if [[ -d "$file" ]]; then
         echo "dir"
-    elif [[ -x "$file" && -f "file" ]]; then
-        if file "$file" | grep -q "text"; then
-            echo "script"
-        else
-            echo "exec"
-        fi
-    elif [[ -f "$file" ]]; then
-        case "${file##*.}" in
-            txt|md|readme) echo "text" ;;
-            sh|bash|zsh) echo "shell" ;;
-            py|python) echo "python" ;;
-            js|json) echo "javascript" ;;
-            html|htm) echo "web" ;;
-            css) echo "style" ;;
-            jpg|jpeg|png|gif|bmp) echo "image" ;;
-            mp3|wav|flac) echo "audio" ;;
-            mp4|avi|mkv) echo "video" ;;
-            pdf) echo "pdf" ;;
-            zip|tar|gz|7z) echo "archive" ;;
-            log) echo "log" ;;
-            *)
-                if file "$file" | grep -q "text"; then
-                    echo "text"
-                else
-                    echo "binary"
-                fi
-            ;;
-        esac
-    else
-        echo "unknown"
+        return 0
     fi
+
+    #Special files unless they are regular files
+    if [[ ! -f "$file" ]]; then
+        echo "special"
+        return 0
+    fi
+
+    local basename_file=$(basename "$file")
+    local extension="${file##*.}"
+    local filename_lower="${basename_file,,}" # 소문자로 변환
+
+    # 
+    case "$extension" in
+        # text
+        txt|md|readme|rst|asciidoc) echo "text" ;;
+
+        # config
+        conf|config|cfg|ini|yml|yaml|toml|json) echo "config" ;;
+
+        # shell script
+        sh|bash|zsh|fish|csh|tcsh) echo "shell" ;;
+
+        # programing language
+        py|python|pyw) echo "python" ;;
+        js|mjs|jsx|ts|tsx) echo "javascript" ;;
+        c|h|cpp|cxx|cc|hpp) echo "c_cpp" ;;
+        java|class|jar) echo "java" ;;
+        php|php3|php4|php5) echo "php" ;;
+        rb|ruby) echo "ruby" ;;
+        go) echo "golang" ;;
+        rs|rust) echo "rust" ;;
+
+        # web
+        html|htm|xhtml) echo "web" ;;
+        css|scss|sass|less) echo "style" ;;
+        xml|xsl|xsd) echo "xml" ;;
+
+        # image
+        jpg|jpeg|png|gif|bmp|tiff|tif|webp|svg|ico) echo "image" ;;
+
+        # audio
+        mp3|wav|flac|aac|ogg|m4a|wma) echo "audio" ;;
+
+        # video
+        mp4|avi|mkv|mov|wmv|flv|webm|m4v) echo "video" ;;
+
+        # document
+        pdf|doc|docx|odt|rtf) echo "document" ;;
+        xls|xlsx|ods|csv) echo "spreadsheet" ;;
+        ppt|pptx|odp) echo "presentation" ;;
+
+        # archive
+        zip|rar|7z|tar|gz|bz2|xz|lz|lzma) echo "archive" ;;
+
+        # log files
+        log|out|err) echo "log" ;;
+
+        # binary/executable file (확장자 없는 경우 포함)
+        exe|bin|deb|rpm|dmg|msi) echo "binary" ;;
+
+        *)
+            case "$filename_lower" in
+                makefile|dockerfile|vagrantfile) echo "config" ;;
+                readme*|license*|changelog*|todo*) echo "text" ;;
+                *.bak|*.backup|*.tmp|*.temp) echo "backup" ;;
+                core|core.*) echo "coredump" ;;
+                *)
+                    if [[ -x "$file" ]]; then
+                        local file_output=$(file -b "$file" 2>/dev/null)
+                        case "$file_output" in
+                            *"shell script"*|*"bash script"*) echo "shell" ;;
+                            *"Python script"*) echo "python" ;;
+                            *"text"*) echo "script" ;;
+                            *"executable"*|*"ELF"*) echo "exec" ;;
+                            *) echo "exec" ;;
+                        esac
+                    else
+                        local file_output=$(file -b "$file" 2>/dev/null)
+                        case "$file_output" in
+                            *"text"*) echo "text" ;;
+                            *"data"*|*"binary"*) echo "data" ;;
+                            *"image"*) echo "image" ;;
+                            *"audio"*) echo "audio" ;;
+                            *"video"*) echo "video" ;;
+                            *"archive"*|*"compressed"*) echo "archive" ;;
+                            *) echo "unknown" ;;
+                        esac
+                    fi
+                ;;
+            esac
+        ;;
+    esac
 }
 
 # Convert file size to easy-to-read format
