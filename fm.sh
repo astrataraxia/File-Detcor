@@ -1,6 +1,6 @@
 #!/bin/bash
-# fm - a simple file viewer & manager
-# Version 1.0
+# fm - a simple file viewer & manager with pagination
+# Version 1.2
 
 # color definitions
 RED='\033[0;31m'
@@ -15,7 +15,10 @@ RESET='\033[0m'
 # global variables
 declare -a FILES # file list
 declare -a FILETYPES # file type list  
-CURRENT_DIR="$(pwd)" 
+CURRENT_DIR="$(pwd)"
+PAGE_SIZE=20
+CURRENT_PAGE=1
+TOTAL_PAGES=1
 
 # file type detection function
 file_type_detailed() {
@@ -167,7 +170,7 @@ print_file_with_lines() {
     echo "================================================================================"
 
     if [[ ! -r "$file" ]]; then
-        echo -e "${RED}❌ Cannot read file: $file${RESET}"
+        echo -e "${RED}⚠ Cannot read file: $file${RESET}"
         return 1
     fi
 
@@ -186,7 +189,22 @@ print_file_with_lines() {
     done < "$file"
 }
 
-# Print file list
+calculate_pages() {
+    local total_files=${#FILES[@]}
+    TOTAL_PAGES=$(( (total_files + PAGE_SIZE - 1) / PAGE_SIZE ))
+    if (( TOTAL_PAGES == 0 )); then
+        TOTAL_PAGES=1
+    fi
+    
+    if (( CURRENT_PAGE > TOTAL_PAGES )); then
+        CURRENT_PAGE=$TOTAL_PAGES
+    fi
+    if (( CURRENT_PAGE < 1 )); then
+        CURRENT_PAGE=1
+    fi
+}
+
+# Print file list with pagination
 list_files() {
     local dir="${1:-.}"
     FILES=()
@@ -206,51 +224,67 @@ list_files() {
     if [[ "$dir" != "/" ]]; then
         FILES+=("..")
         FILETYPES+=("parent")
-        printf "${CYAN}%-4d${RESET} ${BLUE}%-25s${RESET} %-12s %-9s %-9s %-9s %-12s\n" \
-               "$count" ".." "--------" "-----" "---" "---" "drwxr-xr-x"
-        ((count++))
     fi
 
     # Process files and directories
     for file in "$dir"/*; do
         [[ ! -e "$file" ]] && continue
-
-        local basename_file=$(basename "$file")
         FILES+=("$file")
-
-        # Collect file information
-        local mod_time=$(date -r "$file" +"%Y-%m-%d" 2>/dev/null || echo "unknown")
-        local file_size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "0")
-        local size=$(format_size "$file_size")
-        local owner=$(stat -f%Su "$file" 2>/dev/null || stat -c%U "$file" 2>/dev/null || echo "unknown")
-        local group=$(stat -f%Sg "$file" 2>/dev/null || stat -c%G "$file" 2>/dev/null || echo "unknown")
-        local perm=$(stat -f%Sp "$file" 2>/dev/null || stat -c%A "$file" 2>/dev/null || echo "unknown")
         local ftype=$(file_type_detailed "$file")
-
         FILETYPES+=("$ftype")
+    done
 
-        # File type-specific colors and icons
-        local color=""
-        local icon=""
-        case "$ftype" in
-            "dir") color="$BLUE"; icon="📁" ;;
-            "exec") color="$GREEN"; icon="⚡" ;;
-            "script"|"shell") color="$GREEN"; icon="📜" ;;
-            "text") color="$WHITE"; icon="📄" ;;
-            "image") color="$MAGENTA"; icon="🖼️" ;;
-            "archive") color="$YELLOW"; icon="📦" ;;
-            "log") color="$CYAN"; icon="📋" ;;
-            *) color="$WHITE"; icon="📄" ;;
-        esac
+    # 페이지 계산
+    calculate_pages
+    
+    local start_idx=$(( (CURRENT_PAGE - 1) * PAGE_SIZE ))
+    local end_idx=$(( start_idx + PAGE_SIZE - 1 ))
+    
+    local display_count=$((start_idx + 1))
+    
+    for (( i=start_idx; i<=end_idx && i<${#FILES[@]}; i++ )); do
+        local file="${FILES[i]}"
+        local ftype="${FILETYPES[i]}"
+        local basename_file=""
+        
+        if [[ "$ftype" == "parent" ]]; then
+            basename_file=".."
+            printf "${CYAN}%-4d${RESET} ${BLUE}%-25s${RESET} %-12s %-9s %-9s %-9s %-12s\n" \
+                   "$display_count" ".." "--------" "-----" "---" "---" "drwxr-xr-x"
+        else
+            basename_file=$(basename "$file")
+            
+            # Collect file information
+            local mod_time=$(date -r "$file" +"%Y-%m-%d" 2>/dev/null || echo "unknown")
+            local file_size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "0")
+            local size=$(format_size "$file_size")
+            local owner=$(stat -f%Su "$file" 2>/dev/null || stat -c%U "$file" 2>/dev/null || echo "unknown")
+            local group=$(stat -f%Sg "$file" 2>/dev/null || stat -c%G "$file" 2>/dev/null || echo "unknown")
+            local perm=$(stat -f%Sp "$file" 2>/dev/null || stat -c%A "$file" 2>/dev/null || echo "unknown")
 
-        printf "${CYAN}%-4d${RESET} ${color}%-25s${RESET} %-12s %-9s %-9s %-9s %-12s\n" \
-               "$count" "$basename_file" "$mod_time" "$size" "$owner" "$group" "$perm"
+            # File type-specific colors and icons
+            local color=""
+            local icon=""
+            case "$ftype" in
+                "dir") color="$BLUE"; icon="📁" ;;
+                "exec") color="$GREEN"; icon="⚡" ;;
+                "script"|"shell") color="$GREEN"; icon="📜" ;;
+                "text") color="$WHITE"; icon="📄" ;;
+                "image") color="$MAGENTA"; icon="🖼️" ;;
+                "archive") color="$YELLOW"; icon="📦" ;;
+                "log") color="$CYAN"; icon="📋" ;;
+                *) color="$WHITE"; icon="📄" ;;
+            esac
 
-        ((count++))
+            printf "${CYAN}%-4d${RESET} ${color}%-25s${RESET} %-12s %-9s %-9s %-9s %-12s\n" \
+                   "$display_count" "$basename_file" "$mod_time" "$size" "$owner" "$group" "$perm"
+        fi
+        
+        ((display_count++))
     done
 
     echo "=============================================="
-    echo -e "${GREEN}✅ Completed${RESET}"
+    echo -e "${GREEN}✅ Page ${CURRENT_PAGE}/${TOTAL_PAGES} | Total files: ${#FILES[@]} | Page size: ${PAGE_SIZE}${RESET}"
 }
 
 # File operations menu
@@ -260,7 +294,7 @@ file_menu() {
 
     echo ""
     echo "=============================================="
-    echo -e "${YELLOW}📁 File operations menu: ${WHITE}$(basename "$file")${RESET}"
+    echo -e "${YELLOW}🔧 File operations menu: ${WHITE}$(basename "$file")${RESET}"
     echo "=============================================="
     echo "[1] Enter file contents"
     echo "[2] Edit file"
@@ -281,9 +315,11 @@ file_menu() {
                     else
                         CURRENT_DIR="$file"
                     fi
+                    CURRENT_PAGE=1
                     return 0
                 elif [[ "$ftype" == "parent" ]]; then
                     CURRENT_DIR=$(dirname "$CURRENT_DIR")
+                    CURRENT_PAGE=1
                     return 0
                 elif [[ -f "$file" ]]; then
                     print_file_with_lines "$file"
@@ -292,7 +328,7 @@ file_menu() {
                     read -r
                     return 0
                 else
-                    echo -e "${RED}❌ Cannot read file: $file${RESET}"
+                    echo -e "${RED}⚠ Cannot read file: $file${RESET}"
                 fi
                 ;;
             2)
@@ -301,7 +337,7 @@ file_menu() {
                     vi "$file"
                     return 0
                 else
-                    echo -e "${RED}❌ Cannot edit file: $file${RESET}"
+                    echo -e "${RED}⚠ Cannot edit file: $file${RESET}"
                 fi
                 ;;
             3)
@@ -311,7 +347,7 @@ file_menu() {
                     if rm -rf "$file" 2>/dev/null; then
                         echo -e "${GREEN}✅ File has been deleted.${RESET}"
                     else
-                        echo -e "${RED}❌ Failed to delete file: $file${RESET}"
+                        echo -e "${RED}⚠ Failed to delete file: $file${RESET}"
                     fi
                     sleep 2
                     return 0
@@ -324,11 +360,11 @@ file_menu() {
                 return 0
                 ;;
             0)
-                echo -e "${YELLOW}🔸 Exiting program.${RESET}"
+                echo -e "${YELLOW}📸 Exiting program.${RESET}"
                 exit 0
                 ;;
             *)
-                echo -e "${RED}❌ Invalid selection, please try again.${RESET}"
+                echo -e "${RED}⚠ Invalid selection, please try again.${RESET}"
                 ;;
         esac
     done
@@ -342,20 +378,48 @@ main() {
 
         echo ""
         echo "[>>] Please enter the desired file number"
+        echo "[p] Previous page  [n] Next page  [s] Set page size"
         echo "[c] Cancel (Current Screen Refresh)"
         echo "[0] Exit"
         echo "================================================================================"
 
         while true; do
-            echo -ne "${CYAN}Enter Number >>> ${RESET}"
+            echo -ne "${CYAN}Enter Number/Command >>> ${RESET}"
             read -r selection
 
             if [[ "$selection" == "0" ]]; then
-                echo -e "${YELLOW}🔸 Shut down the program.${RESET}"
+                echo -e "${YELLOW}📸 Shut down the program.${RESET}"
                 echo -e "${RESET}"
                 exit 0
             elif [[ "$selection" == "c" || "$selection" == "C" ]]; then
                 echo -e "${YELLOW}Refresh the screen.${RESET}"
+                break
+            elif [[ "$selection" == "n" || "$selection" == "N" ]]; then
+                if (( CURRENT_PAGE < TOTAL_PAGES )); then
+                    ((CURRENT_PAGE++))
+                    echo -e "${GREEN}Moving to page ${CURRENT_PAGE}${RESET}"
+                else
+                    echo -e "${YELLOW}Already on last page${RESET}"
+                fi
+                break
+            elif [[ "$selection" == "p" || "$selection" == "P" ]]; then
+                if (( CURRENT_PAGE > 1 )); then
+                    ((CURRENT_PAGE--))
+                    echo -e "${GREEN}Moving to page ${CURRENT_PAGE}${RESET}"
+                else
+                    echo -e "${YELLOW}Already on first page${RESET}"
+                fi
+                break
+            elif [[ "$selection" == "s" || "$selection" == "S" ]]; then
+                echo -ne "${CYAN}Enter new page size (current: ${PAGE_SIZE}) >>> ${RESET}"
+                read -r new_size
+                if [[ "$new_size" =~ ^[0-9]+$ ]] && (( new_size > 0 && new_size <= 100 )); then
+                    PAGE_SIZE=$new_size
+                    CURRENT_PAGE=1
+                    echo -e "${GREEN}Page size changed to ${PAGE_SIZE}${RESET}"
+                else
+                    echo -e "${RED}⚠ Invalid page size. Please enter a number between 1-100.${RESET}"
+                fi
                 break
             elif [[ "$selection" =~ ^[0-9]+$ ]] && (( selection > 0 && selection <= ${#FILES[@]} )); then
                 local selected_file="${FILES[$((selection-1))]}"
@@ -363,7 +427,7 @@ main() {
                 file_menu "$selected_file" "$selected_type"
                 break
             else
-                echo -e "${RED}❌ Invalid number, please re-enter. (Choose from 1-${#FILES[@]}, c, 0)${RESET}"
+                echo -e "${RED}⚠ Invalid input. Enter file number (1-${#FILES[@]}), n/p for page navigation, s for page size, c to refresh, or 0 to exit.${RESET}"
             fi
         done
     done
@@ -371,7 +435,7 @@ main() {
 
 # Program start message
 echo -e "${BLUE}================================================${RESET}"
-echo -e "${WHITE}    🔍 File Viewer & Manager Open${RESET}"
+echo -e "${WHITE}    📁 File Viewer & Manager Open (v1.2)${RESET}"
 echo -e "${BLUE}================================================${RESET}"
 
 main
