@@ -1,6 +1,6 @@
 #!/bin/bash
 # fm - a simple file viewer & manager with pagination
-# Version 1.3 - Performance optimized
+# Version 1.4 - sudo support
 
 # color definitions
 RED='\033[0;31m'
@@ -184,6 +184,7 @@ calculate_pages() {
     TOTAL_PAGES=$(( (total_files + PAGE_SIZE - 1) / PAGE_SIZE ))
 
     (( TOTAL_PAGES == 0 )) && TOTAL_PAGES=1
+
     (( CURRENT_PAGE > TOTAL_PAGES )) && CURRENT_PAGE=$TOTAL_PAGES
     (( CURRENT_PAGE < 1 )) && CURRENT_PAGE=1
 }
@@ -381,12 +382,69 @@ file_menu() {
                 fi
                 ;;
             2)
-                if [[ -f "$file" && -w "$file" ]]; then
-                    echo -e "${YELLOW}Editing file with vi...${RESET}"
-                    vi "$file"
-                    return 0
+                if [[ -f "$file" ]]; then
+                    if [[ -w "$file" ]]; then
+                        echo -e "${YELLOW}Editing file with vi...${RESET}"
+                        vi "$file"
+                        return 0
+                    else
+                        # File exists but no write permission
+                        echo -e "${YELLOW}⚠ No write permission for: $(basename "$file")${RESET}"
+                        echo -e "${CYAN}This file requires elevated privileges to edit.${RESET}"
+                        echo ""
+                        echo "[1] Edit with sudo vi"
+                        echo "[2] Edit with sudo nano" 
+                        echo "[3] Edit with sudoedit (recommended)"
+                        echo "[c] Cancel"
+                        echo ""
+                        
+                        while true; do
+                            echo -ne "${CYAN}Choose editing method >>> ${RESET}"
+                            read -r edit_choice
+                            
+                            case "$edit_choice" in
+                                1)
+                                    echo -e "${YELLOW}Editing with sudo vi... (You may need to enter your password)${RESET}"
+                                    sudo vi "$file"
+                                    if [[ $? -eq 0 ]]; then
+                                        echo -e "${GREEN}✅ File edited successfully with sudo vi${RESET}"
+                                    else
+                                        echo -e "${RED}⚠ Failed to edit file with sudo vi${RESET}"
+                                    fi
+                                    return 0
+                                    ;;
+                                2)
+                                    echo -e "${YELLOW}Editing with sudo nano... (You may need to enter your password)${RESET}"
+                                    sudo nano "$file"
+                                    if [[ $? -eq 0 ]]; then
+                                        echo -e "${GREEN}✅ File edited successfully with sudo nano${RESET}"
+                                    else
+                                        echo -e "${RED}⚠ Failed to edit file with sudo nano${RESET}"
+                                    fi
+                                    return 0
+                                    ;;
+                                3)
+                                    echo -e "${YELLOW}Editing with sudoedit... (You may need to enter your password)${RESET}"
+                                    sudoedit "$file"
+                                    if [[ $? -eq 0 ]]; then
+                                        echo -e "${GREEN}✅ File edited successfully with sudoedit${RESET}"
+                                    else
+                                        echo -e "${RED}⚠ Failed to edit file with sudoedit${RESET}"
+                                    fi
+                                    return 0
+                                    ;;
+                                c|C)
+                                    echo -e "${YELLOW}Edit cancelled${RESET}"
+                                    break
+                                    ;;
+                                *)
+                                    echo -e "${RED}⚠ Invalid choice. Please enter 1, 2, 3, or c${RESET}"
+                                    ;;
+                            esac
+                        done
+                    fi
                 else
-                    echo -e "${RED}⚠ Cannot edit file: $file${RESET}"
+                    echo -e "${RED}⚠ File does not exist or is not a regular file: $file${RESET}"
                 fi
                 ;;
             3)
