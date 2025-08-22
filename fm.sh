@@ -1,6 +1,6 @@
 #!/bin/bash
 # fm - a simple file viewer & manager with pagination
-# Version 1.2
+# Version 1.3 - Performance optimized
 
 # color definitions
 RED='\033[0;31m'
@@ -20,8 +20,8 @@ PAGE_SIZE=20
 CURRENT_PAGE=1
 TOTAL_PAGES=1
 
-# file type detection function
-file_type_detailed() {
+# Fast file type detection (extension-based with fallback)
+file_type_fast() {
     local file="$1"
 
     # check if file exists
@@ -42,7 +42,7 @@ file_type_detailed() {
         return 0
     fi
 
-    #Special files unless they are regular files
+    # Special files unless they are regular files
     if [[ ! -f "$file" ]]; then
         echo "special"
         return 0
@@ -50,9 +50,9 @@ file_type_detailed() {
 
     local basename_file=$(basename "$file")
     local extension="${file##*.}"
-    local filename_lower="${basename_file,,}" # 소문자로 변환
+    local filename_lower="${basename_file,,}" # Convert to lowercase
 
-    # 
+    # Fast extension-based detection (covers 90% of files)
     case "$extension" in
         # text
         txt|md|readme|rst|asciidoc) echo "text" ;;
@@ -98,16 +98,18 @@ file_type_detailed() {
         # log files
         log|out|err) echo "log" ;;
 
-        # binary/executable file (확장자 없는 경우 포함)
+        # binary/executable file
         exe|bin|deb|rpm|dmg|msi) echo "binary" ;;
 
         *)
+            # Special filename patterns
             case "$filename_lower" in
                 makefile|dockerfile|vagrantfile) echo "config" ;;
                 readme*|license*|changelog*|todo*) echo "text" ;;
                 *.bak|*.backup|*.tmp|*.temp) echo "backup" ;;
                 core|core.*) echo "coredump" ;;
                 *)
+                    # Only use 'file' command for executables and unknown files (fallback)
                     if [[ -x "$file" ]]; then
                         local file_output=$(file -b "$file" 2>/dev/null)
                         case "$file_output" in
@@ -118,16 +120,7 @@ file_type_detailed() {
                             *) echo "exec" ;;
                         esac
                     else
-                        local file_output=$(file -b "$file" 2>/dev/null)
-                        case "$file_output" in
-                            *"text"*) echo "text" ;;
-                            *"data"*|*"binary"*) echo "data" ;;
-                            *"image"*) echo "image" ;;
-                            *"audio"*) echo "audio" ;;
-                            *"video"*) echo "video" ;;
-                            *"archive"*|*"compressed"*) echo "archive" ;;
-                            *) echo "unknown" ;;
-                        esac
+                        echo "unknown"  # Skip file command for non-executables
                     fi
                 ;;
             esac
@@ -141,14 +134,13 @@ format_size() {
 
     [[ "$bytes" =~ ^[0-9]+$ ]] || { echo "0B"; return; } 
 
-
     if command -v numfmt >/dev/null 2>&1; then
         numfmt --to=iec --suffix=B --padding=8 "$bytes" 2>/dev/null && return 
     fi
 
     local -r KB=1024
-    local -r MB=$((KB * 1024))      # 1,048,576
-    local -r GB=$((MB * 1024))      # 1,073,741,824
+    local -r MB=$((KB * 1024))
+    local -r GB=$((MB * 1024))
 
     if (( bytes >= GB )); then
         printf "%.1fGB" "$((bytes * 10 / GB))e-1"
@@ -176,110 +168,167 @@ print_file_with_lines() {
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" =~ ^[[:space:]]*# ]]; then
-            # Comment lines are printed in green
             printf "${YELLOW}%02d${RESET} ${GREEN}%s${RESET}\n" "$line_num" "$line"
         elif [[ "$line" =~ ^[[:space:]]*$ ]]; then
-            # Blank lines are printed without content
             printf "${YELLOW}%02d${RESET} \n" "$line_num"
         else
-            # Regular lines are printed in default color
             printf "${YELLOW}%02d${RESET} %s\n" "$line_num" "$line"
         fi
         ((line_num++))
     done < "$file"
 }
 
+# Calculate pages
 calculate_pages() {
     local total_files=${#FILES[@]}
     TOTAL_PAGES=$(( (total_files + PAGE_SIZE - 1) / PAGE_SIZE ))
-    if (( TOTAL_PAGES == 0 )); then
-        TOTAL_PAGES=1
-    fi
-    
-    if (( CURRENT_PAGE > TOTAL_PAGES )); then
-        CURRENT_PAGE=$TOTAL_PAGES
-    fi
-    if (( CURRENT_PAGE < 1 )); then
-        CURRENT_PAGE=1
-    fi
+
+    (( TOTAL_PAGES == 0 )) && TOTAL_PAGES=1
+    (( CURRENT_PAGE > TOTAL_PAGES )) && CURRENT_PAGE=$TOTAL_PAGES
+    (( CURRENT_PAGE < 1 )) && CURRENT_PAGE=1
 }
 
-# Print file list with pagination
-list_files() {
+# Fast file listing - only collect filenames first
+collect_files() {
     local dir="${1:-.}"
     FILES=()
     FILETYPES=()
 
-    echo -e "${BLUE}📁 Current directory: ${WHITE}$(realpath "$dir")${RESET}"
-    echo "=============================================="
-
-    # Header output
-    printf "${WHITE}%-4s %-25s %-12s %-9s %-9s %-9s %-12s${RESET}\n" \
-           "No" "Filename" "Modified" "Size" "Owner" "Group" "Permissions"
-    echo "================================================================================"
-
-    local count=1
-
-    # If the current directory is not root, add the parent directory entry
+    # Add parent directory entry if not root
     if [[ "$dir" != "/" ]]; then
         FILES+=("..")
         FILETYPES+=("parent")
     fi
 
-    # Process files and directories
+    # Fast collection of filenames only
+    local file
     for file in "$dir"/*; do
         [[ ! -e "$file" ]] && continue
         FILES+=("$file")
-        local ftype=$(file_type_detailed "$file")
-        FILETYPES+=("$ftype")
+        # Only do basic type detection for display purposes
+        if [[ -d "$file" ]]; then
+            FILETYPES+=("dir")
+        else
+            FILETYPES+=("file")  # Defer detailed type detection
+        fi
     done
+}
 
-    # 페이지 계산
+# Get detailed file info (optimized with single stat call)
+get_file_info() {
+    local file="$1"
+    local info_array_name="$2"
+    
+    if [[ ! -e "$file" ]]; then
+        return 1
+    fi
+    
+    # Single stat call to get all information at once
+    local stat_format="%Y|%s|%U|%G|%A"
+    local stat_info
+    
+    # Try different stat formats based on OS
+    if stat_info=$(stat --format="$stat_format" "$file" 2>/dev/null); then
+        # GNU stat (Linux)
+        :
+    elif stat_info=$(stat -f "%m|%z|%Su|%Sg|%Sp" "$file" 2>/dev/null); then
+        # BSD stat (macOS)
+        :
+    else
+        # Fallback
+        stat_info="0|0|unknown|unknown|unknown"
+    fi
+    
+    # Parse the stat info
+    IFS='|' read -r mtime size owner group perm <<< "$stat_info"
+    
+    # Format modification time
+    local mod_time
+    if [[ "$mtime" =~ ^[0-9]+$ ]] && (( mtime > 0 )); then
+        mod_time=$(date -d "@$mtime" +"%Y-%m-%d" 2>/dev/null || date -r "$mtime" +"%Y-%m-%d" 2>/dev/null || echo "unknown")
+    else
+        mod_time="unknown"
+    fi
+    
+    # Format size
+    local formatted_size=$(format_size "$size")
+    
+    # Get detailed file type only when needed
+    local ftype=$(file_type_fast "$file")
+    
+    # Return info via array reference
+    declare -n info_ref=$info_array_name
+    info_ref=("$ftype" "$mod_time" "$formatted_size" "$owner" "$group" "$perm")
+}
+
+# Print file list with lazy loading
+list_files() {
+    local dir="${1:-.}"
+    
+    echo -e "${BLUE}📁 Current directory: ${WHITE}$(realpath "$dir")${RESET}"
+    echo "=============================================="
+
+    # Fast collection of filenames
+    collect_files "$dir"
     calculate_pages
     
+    # Header output
+    printf "${WHITE}%-4s %-25s %-12s %-9s %-9s %-9s %-12s${RESET}\n" \
+           "No" "Filename" "Modified" "Size" "Owner" "Group" "Permissions"
+    echo "================================================================================"
+
+    # Only process files for current page
     local start_idx=$(( (CURRENT_PAGE - 1) * PAGE_SIZE ))
     local end_idx=$(( start_idx + PAGE_SIZE - 1 ))
-    
     local display_count=$((start_idx + 1))
-    
+
     for (( i=start_idx; i<=end_idx && i<${#FILES[@]}; i++ )); do
         local file="${FILES[i]}"
-        local ftype="${FILETYPES[i]}"
-        local basename_file=""
+        local initial_ftype="${FILETYPES[i]}"
         
-        if [[ "$ftype" == "parent" ]]; then
-            basename_file=".."
+        if [[ "$initial_ftype" == "parent" ]]; then
             printf "${CYAN}%-4d${RESET} ${BLUE}%-25s${RESET} %-12s %-9s %-9s %-9s %-12s\n" \
                    "$display_count" ".." "--------" "-----" "---" "---" "drwxr-xr-x"
+            FILETYPES[i]="parent"  # Update with correct type
         else
-            basename_file=$(basename "$file")
-            
-            # Collect file information
-            local mod_time=$(date -r "$file" +"%Y-%m-%d" 2>/dev/null || echo "unknown")
-            local file_size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "0")
-            local size=$(format_size "$file_size")
-            local owner=$(stat -f%Su "$file" 2>/dev/null || stat -c%U "$file" 2>/dev/null || echo "unknown")
-            local group=$(stat -f%Sg "$file" 2>/dev/null || stat -c%G "$file" 2>/dev/null || echo "unknown")
-            local perm=$(stat -f%Sp "$file" 2>/dev/null || stat -c%A "$file" 2>/dev/null || echo "unknown")
+            # Get detailed info only for files being displayed
+            local file_info
+            if get_file_info "$file" file_info; then
+                local ftype="${file_info[0]}"
+                local mod_time="${file_info[1]}"
+                local size="${file_info[2]}"
+                local owner="${file_info[3]}"
+                local group="${file_info[4]}"
+                local perm="${file_info[5]}"
+                
+                # Update the FILETYPES array with correct type
+                FILETYPES[i]="$ftype"
+                
+                local basename_file=$(basename "$file")
+                
+                # File type-specific colors
+                local color=""
+                case "$ftype" in
+                    "dir") color="$BLUE" ;;
+                    "exec") color="$GREEN" ;;
+                    "script"|"shell") color="$GREEN" ;;
+                    "text") color="$WHITE" ;;
+                    "image") color="$MAGENTA" ;;
+                    "archive") color="$YELLOW" ;;
+                    "log") color="$CYAN" ;;
+                    *) color="$WHITE" ;;
+                esac
 
-            # File type-specific colors and icons
-            local color=""
-            local icon=""
-            case "$ftype" in
-                "dir") color="$BLUE"; icon="📁" ;;
-                "exec") color="$GREEN"; icon="⚡" ;;
-                "script"|"shell") color="$GREEN"; icon="📜" ;;
-                "text") color="$WHITE"; icon="📄" ;;
-                "image") color="$MAGENTA"; icon="🖼️" ;;
-                "archive") color="$YELLOW"; icon="📦" ;;
-                "log") color="$CYAN"; icon="📋" ;;
-                *) color="$WHITE"; icon="📄" ;;
-            esac
-
-            printf "${CYAN}%-4d${RESET} ${color}%-25s${RESET} %-12s %-9s %-9s %-9s %-12s\n" \
-                   "$display_count" "$basename_file" "$mod_time" "$size" "$owner" "$group" "$perm"
+                printf "${CYAN}%-4d${RESET} ${color}%-25s${RESET} %-12s %-9s %-9s %-9s %-12s\n" \
+                       "$display_count" "$basename_file" "$mod_time" "$size" "$owner" "$group" "$perm"
+            else
+                # Fallback if stat fails
+                local basename_file=$(basename "$file")
+                printf "${CYAN}%-4d${RESET} ${WHITE}%-25s${RESET} %-12s %-9s %-9s %-9s %-12s\n" \
+                       "$display_count" "$basename_file" "unknown" "unknown" "unknown" "unknown" "unknown"
+            fi
         fi
-        
+
         ((display_count++))
     done
 
@@ -384,7 +433,7 @@ main() {
         echo "================================================================================"
 
         while true; do
-            echo -ne "${CYAN}Enter Number/Command >>> ${RESET}"
+            echo -ne "${CYAN}Enter Number >>> ${RESET}"
             read -r selection
 
             if [[ "$selection" == "0" ]]; then
@@ -435,7 +484,7 @@ main() {
 
 # Program start message
 echo -e "${BLUE}================================================${RESET}"
-echo -e "${WHITE}    📁 File Viewer & Manager Open (v1.2)${RESET}"
+echo -e "${WHITE}    📁 File Viewer & Manager Open (v1.3)${RESET}"
 echo -e "${BLUE}================================================${RESET}"
 
 main
