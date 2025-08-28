@@ -1,6 +1,6 @@
 #!/bin/bash
 # fm - a simple file viewer & manager with pagination
-# Version 1.4 - sudo support
+# Version 1.5 - sudo support
 
 # color definitions
 RED='\033[0;31m'
@@ -117,7 +117,9 @@ file_type_fast() {
                             *"Python script"*) echo "python" ;;
                             *"text"*) echo "script" ;;
                             *"executable"*|*"ELF"*) echo "exec" ;;
-                            *) echo "exec" ;;
+                            *)
+                                echo "exec"
+                            ;;
                         esac
                     else
                         echo "unknown"  # Skip file command for non-executables
@@ -528,13 +530,20 @@ main() {
                     echo -e "${RED}⚠ Invalid page size. Please enter a number between 1-100.${RESET}"
                 fi
                 break
-            elif [[ "$selection" =~ ^[0-9]+$ ]] && (( selection > 0 && selection <= ${#FILES[@]} )); then
+            # Calculate the range of valid file numbers for the current page
+            local start_num=$(( (CURRENT_PAGE - 1) * PAGE_SIZE + 1 ))
+            local end_num=$(( start_num + PAGE_SIZE - 1 ))
+            if (( end_num > ${#FILES[@]} )); then
+                end_num=${#FILES[@]}
+            fi
+
+            if [[ "$selection" =~ ^[0-9]+$ ]] && (( selection >= start_num && selection <= end_num )); then
                 local selected_file="${FILES[$((selection-1))]}"
                 local selected_type="${FILETYPES[$((selection-1))]}"
                 file_menu "$selected_file" "$selected_type"
                 break
             else
-                echo -e "${RED}⚠ Invalid input. Enter file number (1-${#FILES[@]}), n/p for page navigation, s for page size, c to refresh, or 0 to exit.${RESET}"
+                echo -e "${RED}⚠ Invalid input. Enter file number (${start_num}-${end_num}), n/p for page navigation, s for page size, c to refresh, or 0 to exit.${RESET}"
             fi
         done
     done
@@ -542,7 +551,7 @@ main() {
 
 # Program start message
 echo -e "${BLUE}================================================${RESET}"
-echo -e "${WHITE}    📁 File Viewer & Manager Open (v1.3)${RESET}"
+echo -e "${WHITE}    📁 File Viewer & Manager Open (v1.5)${RESET}"
 echo -e "${BLUE}================================================${RESET}"
 
 main
