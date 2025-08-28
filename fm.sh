@@ -1,22 +1,24 @@
 #!/bin/bash
 # fm - a simple file viewer & manager with pagination
-# Version 1.5 - sudo support
+# Version 1.7 - Local config file (fm.rc)
 
-# color definitions
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-MAGENTA='\033[0;35m'
-CYAN='\033[0;36m'
-WHITE='\033[1;37m'
-RESET='\033[0m'
+# --- Configuration Loading ---
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+CONFIG_FILE="$SCRIPT_DIR/fm.rc"
+
+if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck source=./fm.rc
+    source "$CONFIG_FILE"
+else
+    echo "Error: Configuration file not found!"
+    echo "Please create fm.rc in the same directory as the script."
+    exit 1
+fi
 
 # global variables
 declare -a FILES # file list
 declare -a FILETYPES # file type list  
 CURRENT_DIR="$(pwd)"
-PAGE_SIZE=20
 CURRENT_PAGE=1
 TOTAL_PAGES=1
 
@@ -55,79 +57,79 @@ file_type_fast() {
     # Fast extension-based detection (covers 90% of files)
     case "$extension" in
         # text
-        txt|md|readme|rst|asciidoc) echo "text" ;;
+        txt|md|readme|rst|asciidoc) echo "text" ;; 
 
         # config
-        conf|config|cfg|ini|yml|yaml|toml|json) echo "config" ;;
+        conf|config|cfg|ini|yml|yaml|toml|json) echo "config" ;; 
 
         # shell script
-        sh|bash|zsh|fish|csh|tcsh) echo "shell" ;;
+        sh|bash|zsh|fish|csh|tcsh) echo "shell" ;; 
 
         # programing language
-        py|python|pyw) echo "python" ;;
-        js|mjs|jsx|ts|tsx) echo "javascript" ;;
-        c|h|cpp|cxx|cc|hpp) echo "c_cpp" ;;
-        java|class|jar) echo "java" ;;
-        php|php3|php4|php5) echo "php" ;;
-        rb|ruby) echo "ruby" ;;
-        go) echo "golang" ;;
-        rs|rust) echo "rust" ;;
+        py|python|pyw) echo "python" ;; 
+        js|mjs|jsx|ts|tsx) echo "javascript" ;; 
+        c|h|cpp|cxx|cc|hpp) echo "c_cpp" ;; 
+        java|class|jar) echo "java" ;; 
+        php|php3|php4|php5) echo "php" ;; 
+        rb|ruby) echo "ruby" ;; 
+        go) echo "golang" ;; 
+        rs|rust) echo "rust" ;; 
 
         # web
-        html|htm|xhtml) echo "web" ;;
-        css|scss|sass|less) echo "style" ;;
-        xml|xsl|xsd) echo "xml" ;;
+        html|htm|xhtml) echo "web" ;; 
+        css|scss|sass|less) echo "style" ;; 
+        xml|xsl|xsd) echo "xml" ;; 
 
         # image
-        jpg|jpeg|png|gif|bmp|tiff|tif|webp|svg|ico) echo "image" ;;
+        jpg|jpeg|png|gif|bmp|tiff|tif|webp|svg|ico) echo "image" ;; 
 
         # audio
-        mp3|wav|flac|aac|ogg|m4a|wma) echo "audio" ;;
+        mp3|wav|flac|aac|ogg|m4a|wma) echo "audio" ;; 
 
         # video
-        mp4|avi|mkv|mov|wmv|flv|webm|m4v) echo "video" ;;
+        mp4|avi|mkv|mov|wmv|flv|webm|m4v) echo "video" ;; 
 
         # document
-        pdf|doc|docx|odt|rtf) echo "document" ;;
-        xls|xlsx|ods|csv) echo "spreadsheet" ;;
-        ppt|pptx|odp) echo "presentation" ;;
+        pdf|doc|docx|odt|rtf) echo "document" ;; 
+        xls|xlsx|ods|csv) echo "spreadsheet" ;; 
+        ppt|pptx|odp) echo "presentation" ;; 
 
         # archive
-        zip|rar|7z|tar|gz|bz2|xz|lz|lzma) echo "archive" ;;
+        zip|rar|7z|tar|gz|bz2|xz|lz|lzma) echo "archive" ;; 
 
         # log files
-        log|out|err) echo "log" ;;
+        log|out|err) echo "log" ;; 
 
         # binary/executable file
-        exe|bin|deb|rpm|dmg|msi) echo "binary" ;;
+        exe|bin|deb|rpm|dmg|msi) echo "binary" ;; 
 
         *)
             # Special filename patterns
             case "$filename_lower" in
-                makefile|dockerfile|vagrantfile) echo "config" ;;
-                readme*|license*|changelog*|todo*) echo "text" ;;
-                *.bak|*.backup|*.tmp|*.temp) echo "backup" ;;
-                core|core.*) echo "coredump" ;;
+                makefile|dockerfile|vagrantfile) echo "config" ;; 
+                readme*|license*|changelog*|todo*) echo "text" ;; 
+                *.bak|*.backup|*.tmp|*.temp) echo "backup" ;; 
+                core|core.*) echo "coredump" ;; 
                 *)
                     # Only use 'file' command for executables and unknown files (fallback)
                     if [[ -x "$file" ]]; then
                         local file_output=$(file -b "$file" 2>/dev/null)
                         case "$file_output" in
-                            *"shell script"*|*"bash script"*) echo "shell" ;;
-                            *"Python script"*) echo "python" ;;
-                            *"text"*) echo "script" ;;
-                            *"executable"*|*"ELF"*) echo "exec" ;;
+                            *"shell script"*|*"bash script"*) echo "shell" ;; 
+                            *"Python script"*) echo "python" ;; 
+                            *"text"*) echo "script" ;; 
+                            *"executable"*|*"ELF"*) echo "exec" ;; 
                             *)
                                 echo "exec"
-                            ;;
+                            ;; 
                         esac
                     else
                         echo "unknown"  # Skip file command for non-executables
                     fi
-                ;;
+                ;; 
             esac
         ;;
-    esac
+esac
 }
 
 # Convert file size to easy-to-read format
@@ -136,7 +138,8 @@ format_size() {
 
     [[ "$bytes" =~ ^[0-9]+$ ]] || { echo "0B"; return; } 
 
-    if command -v numfmt >/dev/null 2>&1; then
+    if command -v numfmt >/dev/null 2>&1;
+    then
         numfmt --to=iec --suffix=B --padding=8 "$bytes" 2>/dev/null && return 
     fi
 
@@ -205,7 +208,8 @@ collect_files() {
 
     # Fast collection of filenames only
     local file
-    for file in "$dir"/*; do
+    for file in "$dir"/*;
+    do
         [[ ! -e "$file" ]] && continue
         FILES+=("$file")
         # Only do basic type detection for display purposes
@@ -231,10 +235,12 @@ get_file_info() {
     local stat_info
     
     # Try different stat formats based on OS
-    if stat_info=$(stat --format="$stat_format" "$file" 2>/dev/null); then
+    if stat_info=$(stat --format="$stat_format" "$file" 2>/dev/null);
+    then
         # GNU stat (Linux)
         :
-    elif stat_info=$(stat -f "%m|%z|%Su|%Sg|%Sp" "$file" 2>/dev/null); then
+    elif stat_info=$(stat -f "%m|%z|%Su|%Sg|%Sp" "$file" 2>/dev/null);
+    then
         # BSD stat (macOS)
         :
     else
@@ -296,7 +302,8 @@ list_files() {
         else
             # Get detailed info only for files being displayed
             local file_info
-            if get_file_info "$file" file_info; then
+            if get_file_info "$file" file_info;
+            then
                 local ftype="${file_info[0]}"
                 local mod_time="${file_info[1]}"
                 local size="${file_info[2]}"
@@ -312,14 +319,14 @@ list_files() {
                 # File type-specific colors
                 local color=""
                 case "$ftype" in
-                    "dir") color="$BLUE" ;;
-                    "exec") color="$GREEN" ;;
-                    "script"|"shell") color="$GREEN" ;;
-                    "text") color="$WHITE" ;;
-                    "image") color="$MAGENTA" ;;
-                    "archive") color="$YELLOW" ;;
-                    "log") color="$CYAN" ;;
-                    *) color="$WHITE" ;;
+                    "dir") color="$BLUE" ;; 
+                    "exec") color="$GREEN" ;; 
+                    "script"|"shell") color="$GREEN" ;; 
+                    "text") color="$WHITE" ;; 
+                    "image") color="$MAGENTA" ;; 
+                    "archive") color="$YELLOW" ;; 
+                    "log") color="$CYAN" ;; 
+                    *) color="$WHITE" ;; 
                 esac
 
                 printf "${CYAN}%-4d${RESET} ${color}%-25s${RESET} %-12s %-9s %-9s %-9s %-12s\n" \
@@ -355,7 +362,8 @@ file_menu() {
     echo "[0] Exit program"
     echo "=============================================="
 
-    while true; do
+    while true;
+    do
         echo -ne "${CYAN}Select menu >>> ${RESET}"
         read -r choice
 
@@ -386,46 +394,36 @@ file_menu() {
             2)
                 if [[ -f "$file" ]]; then
                     if [[ -w "$file" ]]; then
-                        echo -e "${YELLOW}Editing file with vi...${RESET}"
-                        vi "$file"
+                        echo -e "${YELLOW}Editing file with ${EDITOR}...${RESET}"
+                        "$EDITOR" "$file"
                         return 0
                     else
                         # File exists but no write permission
                         echo -e "${YELLOW}⚠ No write permission for: $(basename "$file")${RESET}"
                         echo -e "${CYAN}This file requires elevated privileges to edit.${RESET}"
                         echo ""
-                        echo "[1] Edit with sudo vi"
-                        echo "[2] Edit with sudo nano" 
-                        echo "[3] Edit with sudoedit (recommended)"
+                        echo "[1] Edit with sudo ${EDITOR}"
+                        echo "[2] Edit with sudoedit (recommended)"
                         echo "[c] Cancel"
                         echo ""
                         
-                        while true; do
+                        while true;
+                        do
                             echo -ne "${CYAN}Choose editing method >>> ${RESET}"
                             read -r edit_choice
                             
                             case "$edit_choice" in
                                 1)
-                                    echo -e "${YELLOW}Editing with sudo vi... (You may need to enter your password)${RESET}"
-                                    sudo vi "$file"
+                                    echo -e "${YELLOW}Editing with sudo ${EDITOR}... (You may need to enter your password)${RESET}"
+                                    sudo "$EDITOR" "$file"
                                     if [[ $? -eq 0 ]]; then
-                                        echo -e "${GREEN}✅ File edited successfully with sudo vi${RESET}"
+                                        echo -e "${GREEN}✅ File edited successfully with sudo ${EDITOR}${RESET}"
                                     else
-                                        echo -e "${RED}⚠ Failed to edit file with sudo vi${RESET}"
+                                        echo -e "${RED}⚠ Failed to edit file with sudo ${EDITOR}${RESET}"
                                     fi
                                     return 0
-                                    ;;
+                                    ;; 
                                 2)
-                                    echo -e "${YELLOW}Editing with sudo nano... (You may need to enter your password)${RESET}"
-                                    sudo nano "$file"
-                                    if [[ $? -eq 0 ]]; then
-                                        echo -e "${GREEN}✅ File edited successfully with sudo nano${RESET}"
-                                    else
-                                        echo -e "${RED}⚠ Failed to edit file with sudo nano${RESET}"
-                                    fi
-                                    return 0
-                                    ;;
-                                3)
                                     echo -e "${YELLOW}Editing with sudoedit... (You may need to enter your password)${RESET}"
                                     sudoedit "$file"
                                     if [[ $? -eq 0 ]]; then
@@ -434,26 +432,27 @@ file_menu() {
                                         echo -e "${RED}⚠ Failed to edit file with sudoedit${RESET}"
                                     fi
                                     return 0
-                                    ;;
+                                    ;; 
                                 c|C)
                                     echo -e "${YELLOW}Edit cancelled${RESET}"
                                     break
-                                    ;;
+                                    ;; 
                                 *)
-                                    echo -e "${RED}⚠ Invalid choice. Please enter 1, 2, 3, or c${RESET}"
-                                    ;;
+                                    echo -e "${RED}⚠ Invalid choice. Please enter 1, 2, or c${RESET}"
+                                    ;; 
                             esac
                         done
                     fi
                 else
                     echo -e "${RED}⚠ File does not exist or is not a regular file: $file${RESET}"
                 fi
-                ;;
+                ;; 
             3)
                 echo -ne "${RED}Are you sure you want to delete the file '$file'? (y/n) ${RESET}"
                 read -r confirm
                 if [[ "$confirm" =~ ^[Yy]$ ]]; then
-                    if rm -rf "$file" 2>/dev/null; then
+                    if rm -rf "$file" 2>/dev/null;
+                    then
                         echo -e "${GREEN}✅ File has been deleted.${RESET}"
                     else
                         echo -e "${RED}⚠ Failed to delete file: $file${RESET}"
@@ -463,25 +462,26 @@ file_menu() {
                 else
                     echo -e "${YELLOW}Cancellation has been made.${RESET}"
                 fi
-                ;;
+                ;; 
             c|C)
                 echo -e "${YELLOW}Returning to file list.${RESET}"
                 return 0
-                ;;
+                ;; 
             0)
                 echo -e "${YELLOW}📸 Exiting program.${RESET}"
                 exit 0
-                ;;
+                ;; 
             *)
                 echo -e "${RED}⚠ Invalid selection, please try again.${RESET}"
-                ;;
+                ;; 
         esac
     done
 }
 
 # Main loop
 main() {
-    while true; do
+    while true;
+    do
         clear
         list_files "$CURRENT_DIR"
 
@@ -492,44 +492,11 @@ main() {
         echo "[0] Exit"
         echo "================================================================================"
 
-        while true; do
+        while true;
+        do
             echo -ne "${CYAN}Enter Number >>> ${RESET}"
             read -r selection
 
-            if [[ "$selection" == "0" ]]; then
-                echo -e "${YELLOW}📸 Shut down the program.${RESET}"
-                echo -e "${RESET}"
-                exit 0
-            elif [[ "$selection" == "c" || "$selection" == "C" ]]; then
-                echo -e "${YELLOW}Refresh the screen.${RESET}"
-                break
-            elif [[ "$selection" == "n" || "$selection" == "N" ]]; then
-                if (( CURRENT_PAGE < TOTAL_PAGES )); then
-                    ((CURRENT_PAGE++))
-                    echo -e "${GREEN}Moving to page ${CURRENT_PAGE}${RESET}"
-                else
-                    echo -e "${YELLOW}Already on last page${RESET}"
-                fi
-                break
-            elif [[ "$selection" == "p" || "$selection" == "P" ]]; then
-                if (( CURRENT_PAGE > 1 )); then
-                    ((CURRENT_PAGE--))
-                    echo -e "${GREEN}Moving to page ${CURRENT_PAGE}${RESET}"
-                else
-                    echo -e "${YELLOW}Already on first page${RESET}"
-                fi
-                break
-            elif [[ "$selection" == "s" || "$selection" == "S" ]]; then
-                echo -ne "${CYAN}Enter new page size (current: ${PAGE_SIZE}) >>> ${RESET}"
-                read -r new_size
-                if [[ "$new_size" =~ ^[0-9]+$ ]] && (( new_size > 0 && new_size <= 100 )); then
-                    PAGE_SIZE=$new_size
-                    CURRENT_PAGE=1
-                    echo -e "${GREEN}Page size changed to ${PAGE_SIZE}${RESET}"
-                else
-                    echo -e "${RED}⚠ Invalid page size. Please enter a number between 1-100.${RESET}"
-                fi
-                break
             # Calculate the range of valid file numbers for the current page
             local start_num=$(( (CURRENT_PAGE - 1) * PAGE_SIZE + 1 ))
             local end_num=$(( start_num + PAGE_SIZE - 1 ))
@@ -537,21 +504,64 @@ main() {
                 end_num=${#FILES[@]}
             fi
 
-            if [[ "$selection" =~ ^[0-9]+$ ]] && (( selection >= start_num && selection <= end_num )); then
-                local selected_file="${FILES[$((selection-1))]}"
-                local selected_type="${FILETYPES[$((selection-1))]}"
-                file_menu "$selected_file" "$selected_type"
-                break
-            else
-                echo -e "${RED}⚠ Invalid input. Enter file number (${start_num}-${end_num}), n/p for page navigation, s for page size, c to refresh, or 0 to exit.${RESET}"
-            fi
+            case "$selection" in
+                0)
+                    echo -e "${YELLOW}📸 Shut down the program.${RESET}"
+                    echo -e "${RESET}"
+                    exit 0
+                    ;; 
+                c|C)
+                    echo -e "${YELLOW}Refresh the screen.${RESET}"
+                    break
+                    ;; 
+                n|N)
+                    if (( CURRENT_PAGE < TOTAL_PAGES )); then
+                        ((CURRENT_PAGE++))
+                        echo -e "${GREEN}Moving to page ${CURRENT_PAGE}${RESET}"
+                    else
+                        echo -e "${YELLOW}Already on last page${RESET}"
+                    fi
+                    break
+                    ;; 
+                p|P)
+                    if (( CURRENT_PAGE > 1 )); then
+                        ((CURRENT_PAGE--))
+                        echo -e "${GREEN}Moving to page ${CURRENT_PAGE}${RESET}"
+                    else
+                        echo -e "${YELLOW}Already on first page${RESET}"
+                    fi
+                    break
+                    ;; 
+                s|S)
+                    echo -ne "${CYAN}Enter new page size (current: ${PAGE_SIZE}) >>> ${RESET}"
+                    read -r new_size
+                    if [[ "$new_size" =~ ^[0-9]+$ ]] && (( new_size > 0 && new_size <= 100 )); then
+                        PAGE_SIZE=$new_size
+                        CURRENT_PAGE=1
+                        echo -e "${GREEN}Page size changed to ${PAGE_SIZE}${RESET}"
+                    else
+                        echo -e "${RED}⚠ Invalid page size. Please enter a number between 1-100.${RESET}"
+                    fi
+                    break
+                    ;; 
+                *)
+                    if [[ "$selection" =~ ^[0-9]+$ ]] && (( selection >= start_num && selection <= end_num )); then
+                        local selected_file="${FILES[$((selection-1))]}"
+                        local selected_type="${FILETYPES[$((selection-1))]}"
+                        file_menu "$selected_file" "$selected_type"
+                        break
+                    else
+                        echo -e "${RED}⚠ Invalid input. Enter file number (${start_num}-${end_num}), n/p for page navigation, s for page size, c to refresh, or 0 to exit.${RESET}"
+                    fi
+                    ;; 
+            esac
         done
     done
 }
 
 # Program start message
 echo -e "${BLUE}================================================${RESET}"
-echo -e "${WHITE}    📁 File Viewer & Manager Open (v1.5)${RESET}"
+echo -e "${WHITE}    📁 File Viewer & Manager Open (v1.7)${RESET}"
 echo -e "${BLUE}================================================${RESET}"
 
 main

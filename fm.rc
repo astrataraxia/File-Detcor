@@ -1,0 +1,19 @@
+# fm script configuration file
+# Place this file in the same directory as fm.sh
+
+# Default editor (e.g., vi, nano, code)
+EDITOR="vi"
+
+# Number of files to show per page
+PAGE_SIZE=20
+
+# --- Colors ---
+# You can customize ANSI color codes here.
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+RESET='\033[0m'
